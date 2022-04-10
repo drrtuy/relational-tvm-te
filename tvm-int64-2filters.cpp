@@ -3,6 +3,7 @@
 
 #include "dlpack/dlpack.h"
 #include "tvm/driver/driver_api.h"
+#include "tvm/ir/expr.h"
 #include "tvm/runtime/container/array.h"
 #include "tvm/runtime/data_type.h"
 #include "tvm/runtime/c_runtime_api.h"
@@ -25,19 +26,20 @@ class TVMFilterBenchFixture : public benchmark::Fixture
     auto n = Var("n");
     Array<PrimExpr> shape {n};
     static const std::string targetStr{"llvm -mcpu=skylake-avx512"};
-    size_t bitsUsed = 32;
+    size_t bitsUsed = 64;
 
     auto emptyVar = Var("emptyVar", DataType::Int(bitsUsed));
     auto firstFilterVar = Var("firstFilterVar", DataType::Int(bitsUsed));
     auto secFilterVar = Var("secFilterVar", DataType::Int(bitsUsed));
-    auto src = placeholder(shape, DataType::Int(bitsUsed), "emptyVar");
-    Tensor firstFilterOut = compute(src->shape, [&src, &emptyVar, &firstFilterVar](tvm::PrimExpr i) {
-      return if_then_else(src[i] == firstFilterVar, src[i], emptyVar);
+    auto src = placeholder(shape, DataType::Int(bitsUsed), "src");
+    // IntImm(DataType::Int(bitsUsed) as an explicit type PrimExpr value
+    Tensor firstFilterOut = compute(src->shape, [&src, &firstFilterVar, &emptyVar](tvm::PrimExpr i) {
+      return if_then_else(src[i] == emptyVar, src[i], firstFilterVar);
     });
-    Tensor secFilterOut = compute(src->shape, [&src, &emptyVar, &firstFilterOut, &secFilterVar](tvm::PrimExpr i) {
+    Tensor secFilterOut = compute(src->shape, [&src, &firstFilterOut, &secFilterVar, &emptyVar](tvm::PrimExpr i) {
       return if_then_else(firstFilterOut[i] == secFilterVar, firstFilterOut[i], emptyVar);
     });
-    Tensor ridsOut = compute(src->shape, [&src, &secFilterOut, &emptyVar](tvm::PrimExpr i) {
+    Tensor ridsOut = compute(src->shape, [&secFilterOut, &emptyVar](tvm::PrimExpr i) {
       return if_then_else(secFilterOut[i] == emptyVar, i, 8192);
     });
 
@@ -47,7 +49,7 @@ class TVMFilterBenchFixture : public benchmark::Fixture
     // build a module
     std::unordered_map<Tensor, Buffer> binds;
     auto args = Array<ObjectRef>({src, firstFilterOut, secFilterOut, ridsOut, emptyVar,
-    firstFilterVar, secFilterVar});
+      firstFilterVar, secFilterVar});
     auto lowered = LowerSchedule(s, args, "int642filters", binds);
     // cerr << lowered << endl;
 
@@ -64,13 +66,15 @@ class TVMFilterBenchFixture : public benchmark::Fixture
     int device_id = 0;
     int64_t shapeArr[1] = {blockSize};
 
-    // C API funcs TBR
+    // C API funcs TBR -> CPP variant
     TVMArrayAlloc(shapeArr, ndim, dtype_code, dtype_bits, dtype_lanes,
                     device_type, device_id, &srcTensor);
     TVMArrayAlloc(shapeArr, ndim, dtype_code, dtype_bits, dtype_lanes,
                     device_type, device_id, &firstFilterOutTensor);
     TVMArrayAlloc(shapeArr, ndim, dtype_code, dtype_bits, dtype_lanes,
                     device_type, device_id, &secFilterOutTensor);
+    // !!!!!!!!!!!!!!
+    dtype_bits = 32;
     TVMArrayAlloc(shapeArr, ndim, dtype_code, dtype_bits, dtype_lanes,
                     device_type, device_id, &ridsOutTensor);
 
@@ -99,97 +103,7 @@ BENCHMARK_DEFINE_F(TVMFilterBenchFixture, TVM2filtersInt64)(benchmark::State& st
 {
   for (auto _ : state)
   {
-
-
-
-// n = te.var("n")
-// empty_var = te.var("empty_var", dtype='int64')
-// first_filter_var = te.var("first_filter_var", dtype='int64')
-// sec_filter_var = te.var("sec_filter_var", dtype='int64')
-// SRC = te.placeholder((n,), dtype='int64', name="SRC")
-// FIRST_FILTER_OUT = te.compute(SRC.shape,
-//                               lambda i: te.if_then_else(
-//                                   SRC[i] == first_filter_var, SRC[i], empty_var),
-//                               name="FIRST_FILTER_OUT",
-//                               )
-// SEC_FILTER_OUT = te.compute(SRC.shape,
-//                             lambda i: te.if_then_else(
-//                                 FIRST_FILTER_OUT[i] == sec_filter_var, FIRST_FILTER_OUT[i], empty_var),
-//                             name="SEC_FILTER_OUT",
-//                             )
-// #SEC_FILTER_OUT_SORTED = topi.sort(SEC_FILTER_OUT)
-
-// RID_OUT = te.compute(SRC.shape,
-//                      lambda i: te.if_then_else(
-//                          SEC_FILTER_OUT[i] == empty_var, i, BLOCK_SIZE),
-//                      name="RID_OUT"
-//                      )
-
-    // define algorithm
-
-    // auto n = Var("n");
-    // Array<PrimExpr> shape {n};
-    // auto emptyVar = Var("emptyVar");
-    // auto firstFilterVar = Var("firstFilterVar");
-    // auto secFilterVar = Var("secFilterVar");
-    // auto src = placeholder(shape, tvm::DataType::Int(64), "emptyVar");
-    // Tensor firstFilterOut = compute(src->shape, [&src, &emptyVar, &firstFilterVar](tvm::PrimExpr i) {
-    //   return if_then_else(src[i] == firstFilterVar, src[i], emptyVar);
-    // });
-    // Tensor secFilterOut = compute(src->shape, [&src, &emptyVar, &firstFilterOut, &secFilterVar](tvm::PrimExpr i) {
-    //   return if_then_else(firstFilterOut[i] == secFilterVar, firstFilterOut[i], emptyVar);
-    // });
-    // Tensor ridsOut = compute(src->shape, [&src, &secFilterOut, &emptyVar](tvm::PrimExpr i) {
-    //   return if_then_else(secFilterOut[i] == emptyVar, i, 8192);
-    // });
-
-    // // set schedule
-    // Schedule s = create_schedule({firstFilterOut->op, secFilterOut->op, ridsOut->op});
-
-    // // build a module
-    // std::unordered_map<Tensor, Buffer> binds;
-    // auto args = Array<ObjectRef>({src, firstFilterOut, secFilterOut, ridsOut, emptyVar,
-    // firstFilterVar, secFilterVar});
-    // auto lowered = LowerSchedule(s, args, "int642filters", binds);
-    // // cerr << lowered << endl;
-
-    // auto target = Target(targetStr);
-    // auto targetHost = Target(targetStr);
-    // Module mod = build(lowered, target, targetHost);
-    // PackedFunc vecAddFunc = mod->GetFunction("int642filters");
-
-
-    // cout << vecAddMod->GetSource() << endl;
-    // state.PauseTiming();
-
-    // DLTensor* a;
-    // DLTensor* b;
-    // DLTensor* c;
-
-    // auto target = Target(targetStr);
-    // auto targetHost = Target(targetStr);
-    // vecAddMod = build(lowered, target, targetHost);
-    // vecAddFunc = vecAddMod->GetFunction("int642filters");
-    // int ndim = 1;
-    // int dtype_code = kDLInt;
-    // int dtype_bits = 64;
-    // int dtype_lanes = 1;
-    // int device_type = kDLCPU;
-    // int device_id = 0;
-    // int64_t shapeArr[1] = {8192};
-
-    // TVMArrayAlloc(shapeArr, ndim, dtype_code, dtype_bits, dtype_lanes,
-    //                 device_type, device_id, &a);
-    // TVMArrayAlloc(shapeArr, ndim, dtype_code, dtype_bits, dtype_lanes,
-    //                 device_type, device_id, &b);
-    // TVMArrayAlloc(shapeArr, ndim, dtype_code, dtype_bits, dtype_lanes,
-    //                 device_type, device_id, &c);
-    // for (int i = 0; i < shapeArr[0]; ++i) {
-    //     static_cast<int64_t*>(a->data)[i] = i;
-    //     static_cast<int64_t*>(b->data)[i] = i*10;
-    // }
-
-    // state.ResumeTiming();
+    state.PauseTiming();
     TVMValue emptyVar;
     emptyVar.v_int64 = 0xFFFFFFFE;
     TVMValue firstFilterVar;
@@ -199,15 +113,16 @@ BENCHMARK_DEFINE_F(TVMFilterBenchFixture, TVM2filtersInt64)(benchmark::State& st
     TVMArgValue emptyVarArg(emptyVar, kTVMArgInt);
     TVMArgValue firstFilterVarArg{firstFilterVar, kTVMArgInt};
     TVMArgValue secFilterVarArg{secFilterVar, kTVMArgInt};
+    state.ResumeTiming();
 
     // Call
-    for (size_t i = 0; i < 1000000; i += blockSize)
+    for (size_t i = 0; i < state.range(0); i += blockSize)
     {
-        vecAddFunc(srcTensor, firstFilterOutTensor, secFilterOutTensor,
-          ridsOutTensor, emptyVarArg, firstFilterVarArg, secFilterVarArg);
+        benchmark::DoNotOptimize(vecAddFunc(srcTensor, firstFilterOutTensor, secFilterOutTensor,
+          ridsOutTensor, emptyVarArg, firstFilterVarArg, secFilterVarArg));
     }
   }
 }
 
-BENCHMARK_REGISTER_F(TVMFilterBenchFixture, TVM2filtersInt64);
+BENCHMARK_REGISTER_F(TVMFilterBenchFixture, TVM2filtersInt64)->Arg(1000000)->Arg(8000000)->Arg(30000000)->Arg(50000000)->Arg(75000000)->Arg(100000000);
 BENCHMARK_MAIN();
