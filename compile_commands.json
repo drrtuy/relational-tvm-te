@@ -1,0 +1,12 @@
+[
+{
+  "directory": "/data/tvm-te",
+  "command": "/usr/bin/c++   -I/data/tvm/include -I/data/tvm/3rdparty/dlpack/include -I/data/tvm/3rdparty/dmlc-core/include  -g   -std=gnu++2a -o CMakeFiles/tvm-float-vecadd-example.dir/tvm-float-vecadd-example.cpp.o -c /data/tvm-te/tvm-float-vecadd-example.cpp",
+  "file": "/data/tvm-te/tvm-float-vecadd-example.cpp"
+},
+{
+  "directory": "/data/tvm-te",
+  "command": "/usr/bin/c++   -I/data/tvm/include -I/data/tvm/3rdparty/dlpack/include -I/data/tvm/3rdparty/dmlc-core/include  -g   -std=gnu++2a -o CMakeFiles/tvm-int64-2filters.dir/tvm-int64-2filters.cpp.o -c /data/tvm-te/tvm-int64-2filters.cpp",
+  "file": "/data/tvm-te/tvm-int64-2filters.cpp"
+}
+]
